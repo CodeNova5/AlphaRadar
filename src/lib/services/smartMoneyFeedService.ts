@@ -54,9 +54,10 @@ export async function buildSmartMoneyFeed(
 
   // Step 1: Load top wallets from leaderboard
   const leaderboard = await getLatestLeaderboard(window, 50);
-  const topWallets = leaderboard.entries
-    .filter((e) => e.alphaScore >= 50 && e.confidence !== "low")
-    .slice(0, 25);
+    // Relaxed filter: include wallets with alphaScore >= 40 and allow low confidence
+    const topWallets = leaderboard.entries
+      .filter((e) => e.alphaScore >= 40)
+      .slice(0, 25);
 
   if (topWallets.length === 0) {
     return {

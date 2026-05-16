@@ -17,11 +17,12 @@ interface BirdeyeRawResponse {
   message?: string;
 }
 
-const requestsPerSecond = Math.max(1, config.birdeye.requestsPerSecond || 3);
+const requestsPerSecond = Math.max(1, config.birdeye.requestsPerSecond || 1);
 const minIntervalMs = Math.ceil(1000 / requestsPerSecond);
 
 let requestChain = Promise.resolve();
 let lastRequestStartedAt = 0;
+let currentKeyIndex = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -51,11 +52,14 @@ export async function birdeyeGet<T>(
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
   }
 
-  const maxAttempts = 3;
+  const maxAttempts = config.birdeye.apiKeys.length + 1;
+  let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     await acquireSlot();
 
+    const keyIndex = (attempt - 1) % config.birdeye.apiKeys.length;
+    const apiKey = config.birdeye.apiKeys[keyIndex];
     const start = Date.now();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -64,7 +68,7 @@ export async function birdeyeGet<T>(
       const res = await fetch(url.toString(), {
         method: "GET",
         headers: {
-          "X-API-KEY": config.birdeye.apiKey,
+          "X-API-KEY": apiKey,
           "x-chain": config.birdeye.defaultChain,
           "Content-Type": "application/json",
         },
@@ -84,15 +88,16 @@ export async function birdeyeGet<T>(
           throw new BirdeyeError(endpoint, 0, json.message || "API returned success=false");
         }
 
-        console.log(`[Birdeye] ${endpoint} ${duration}ms`);
+        console.log(`[Birdeye] ${endpoint} ${duration}ms (key ${keyIndex + 1}/${config.birdeye.apiKeys.length})`);
         return json.data as T;
       }
 
       const status = res.status;
-      console.error(`[Birdeye] ${endpoint} ${status} ${duration}ms`);
+      console.error(`[Birdeye] ${endpoint} ${status} ${duration}ms (attempt ${attempt}/${maxAttempts}, key ${keyIndex + 1}/${config.birdeye.apiKeys.length})`);
 
       if (status === 429 && attempt < maxAttempts) {
-        await sleep(250 * attempt);
+        const waitMs = Math.min(1000 * attempt, 5000);
+        await sleep(waitMs);
         continue;
       }
 
@@ -101,6 +106,7 @@ export async function birdeyeGet<T>(
       clearTimeout(timeout);
 
       if (err instanceof BirdeyeError) {
+        lastError = err;
         if (err.status === 0 && attempt < maxAttempts) {
           await sleep(250 * attempt);
           continue;
@@ -109,13 +115,15 @@ export async function birdeyeGet<T>(
       }
 
       if ((err as Error).name === "AbortError") {
+        lastError = new BirdeyeError(endpoint, 0, "Request timed out");
         if (attempt < maxAttempts) {
           await sleep(250 * attempt);
           continue;
         }
-        throw new BirdeyeError(endpoint, 0, "Request timed out");
+        throw lastError;
       }
 
+      lastError = err as Error;
       if (attempt < maxAttempts) {
         await sleep(250 * attempt);
         continue;
@@ -125,5 +133,5 @@ export async function birdeyeGet<T>(
     }
   }
 
-  throw new BirdeyeError(endpoint, 0, "Birdeye request failed after retries");
+  throw lastError || new BirdeyeError(endpoint, 0, "Birdeye request failed after retries");
 }

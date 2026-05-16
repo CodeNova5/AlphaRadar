@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { success, fail } from "@/lib/api-response";
-import { getLatestSmartMoneyFeed } from "@/lib/services/smartMoneyFeedService";
+import { getLatestSmartMoneyFeed, buildSmartMoneyFeed } from "@/lib/services/smartMoneyFeedService";
 import type { TimeWindow } from "@/lib/birdeye/types";
 
 const VALID_WINDOWS: TimeWindow[] = ["24h", "7d", "30d"];
@@ -18,7 +18,8 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const result = await getLatestSmartMoneyFeed(windowParam, limit);
+    // Force a fresh build to pick up updated filtering immediately
+    const result = await buildSmartMoneyFeed(windowParam, limit);
     return NextResponse.json(
       success(
         { window: result.window, generatedAt: result.generatedAt, signals: result.signals },

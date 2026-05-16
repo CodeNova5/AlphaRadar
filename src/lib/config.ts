@@ -4,8 +4,16 @@ const required = (key: string): string => {
   return value;
 };
 
+const getApiKeys = (): string[] => {
+  const keys: string[] = [required("BIRDEYE_API_KEY")];
+  if (process.env.BIRDEYE_API_KEY2) keys.push(process.env.BIRDEYE_API_KEY2);
+  if (process.env.BIRDEYE_API_KEY3) keys.push(process.env.BIRDEYE_API_KEY3);
+  return keys;
+};
+
 export const config = {
   birdeye: {
+    apiKeys: getApiKeys(),
     apiKey: required("BIRDEYE_API_KEY"),
     baseUrl: process.env.BIRDEYE_BASE_URL || "https://public-api.birdeye.so",
     defaultChain: process.env.DEFAULT_CHAIN || "solana",
