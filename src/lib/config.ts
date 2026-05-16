@@ -9,10 +9,12 @@ export const config = {
     apiKey: required("BIRDEYE_API_KEY"),
     baseUrl: process.env.BIRDEYE_BASE_URL || "https://public-api.birdeye.so",
     defaultChain: process.env.DEFAULT_CHAIN || "solana",
+    requestsPerSecond: Number(process.env.BIRDEYE_REQUESTS_PER_SECOND || "1"),
   },
   supabase: {
     url: required("NEXT_PUBLIC_SUPABASE_URL"),
     anonKey: required("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY || "",
   },
   admin: {
     refreshSecret: process.env.ADMIN_REFRESH_SECRET || "dev-secret",

@@ -1,4 +1,5 @@
 import { birdeyeGet } from "./client";
+import { BirdeyeError } from "./client";
 import type {
   TimeWindow,
   BirdeyePnlSummary,
@@ -13,6 +14,8 @@ import type {
 } from "./types";
 
 type TraderGainersLosersType = "today" | "yesterday" | "1W";
+
+let firstFundedDisabledUntil = 0;
 
 function toTraderGainersLosersType(window: TimeWindow): TraderGainersLosersType {
   switch (window) {
@@ -129,9 +132,24 @@ export async function getWalletTokenList(
 export async function getWalletFirstFunded(
   wallet: string
 ): Promise<BirdeyeFirstFunded> {
+  if (Date.now() < firstFundedDisabledUntil) {
+    return { wallet, firstFundedAt: null, walletAgeDays: null };
+  }
+
   const data = await birdeyeGet<unknown>("/wallet/v2/tx/first-funded", {
     wallet,
+  }).catch((err) => {
+    if (err instanceof BirdeyeError && err.status === 404) {
+      firstFundedDisabledUntil = Date.now() + 60 * 60 * 1000;
+      return null;
+    }
+    throw err;
   });
+
+  if (!data) {
+    return { wallet, firstFundedAt: null, walletAgeDays: null };
+  }
+
   const r = data as Record<string, unknown>;
   const firstFundedAt = (r.firstFundedAt ?? r.first_funded_at ?? null) as string | null;
   let walletAgeDays: number | null = null;

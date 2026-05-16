@@ -59,6 +59,11 @@ Frontend (Next.js/React)
 2. `npm install`
 3. `npm run dev`
 
+## Environment
+
+- `SUPABASE_SERVICE_ROLE_KEY` is recommended for server routes so leaderboard and signal snapshots can be cached without RLS failures.
+- `BIRDEYE_REQUESTS_PER_SECOND` controls the Birdeye client throttle. The default is `3` requests per second.
+
 ## API Routes
 
 | Route | Description |

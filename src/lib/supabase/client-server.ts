@@ -3,5 +3,12 @@ import { config } from "@/lib/config";
 
 export const supabase = createClient(
   config.supabase.url,
-  config.supabase.anonKey
+  config.supabase.serviceRoleKey || config.supabase.anonKey,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  }
 );

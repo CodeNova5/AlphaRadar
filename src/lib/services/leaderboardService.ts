@@ -1,4 +1,4 @@
-import { getTraderGainersLosers, getWalletPnlSummary, getWalletFirstFunded } from "@/lib/birdeye/endpoints";
+import { getTraderGainersLosers } from "@/lib/birdeye/endpoints";
 import type { TimeWindow, BirdeyeTraderRow } from "@/lib/birdeye/types";
 import { computeAlphaScore } from "@/lib/scoring/walletAlphaScore";
 import { classifyArchetype } from "@/lib/scoring/archetypes";
@@ -26,6 +26,9 @@ export interface LeaderboardResult {
   entries: LeaderboardEntry[];
   warnings: string[];
 }
+
+const leaderboardMemoryCache = new Map<string, { expiresAt: number; result: LeaderboardResult }>();
+const leaderboardInFlight = new Map<string, Promise<LeaderboardResult>>();
 
 export async function buildLeaderboard(
   window: TimeWindow,
@@ -60,30 +63,19 @@ export async function buildLeaderboard(
 
   for (const candidate of toProcess) {
     try {
-      let pnlSummary, firstFunded;
+      const walletAgeDays = 0;
 
-      try {
-        pnlSummary = await getWalletPnlSummary(candidate.wallet, window);
-      } catch {
-        // Use candidate data as fallback
-        pnlSummary = {
-          wallet: candidate.wallet,
-          totalPnlUsd: candidate.pnlUsd,
-          totalPnlPercent: 0,
-          realizedPnlUsd: candidate.pnlUsd,
-          unrealizedPnlUsd: 0,
-          roiPercent: candidate.roiPercent,
-          winRate: candidate.winRate,
-          tradeCount: candidate.tradeCount,
-          volumeUsd: candidate.volumeUsd,
-        };
-      }
-
-      try {
-        firstFunded = await getWalletFirstFunded(candidate.wallet);
-      } catch {
-        // Non-critical
-      }
+      const pnlSummary = {
+        wallet: candidate.wallet,
+        totalPnlUsd: candidate.pnlUsd,
+        totalPnlPercent: 0,
+        realizedPnlUsd: candidate.pnlUsd,
+        unrealizedPnlUsd: 0,
+        roiPercent: candidate.roiPercent,
+        winRate: candidate.winRate,
+        tradeCount: candidate.tradeCount,
+        volumeUsd: candidate.volumeUsd,
+      };
 
       const pnlConcentration = 0.5; // default, would need PNL details to compute
       const scoreInput: ScoreInput = {
@@ -92,7 +84,7 @@ export async function buildLeaderboard(
         winRate: pnlSummary.winRate,
         tradeCount: pnlSummary.tradeCount,
         tokenCount: 5, // estimate
-        walletAgeDays: firstFunded?.walletAgeDays ?? 0,
+        walletAgeDays,
         volumeUsd: pnlSummary.volumeUsd,
         recentActivity: true,
         pnlConcentration,
@@ -107,7 +99,7 @@ export async function buildLeaderboard(
         recentActivity: true,
         realizedPnlUsd: pnlSummary.realizedPnlUsd,
         tradeCount: pnlSummary.tradeCount,
-        walletAgeDays: firstFunded?.walletAgeDays ?? 0,
+        walletAgeDays,
       });
 
       entries.push({
@@ -119,7 +111,7 @@ export async function buildLeaderboard(
         alphaScore: scoreResult.alphaScore,
         alphaClass: scoreResult.alphaClass,
         confidence: scoreResult.confidence,
-        walletAgeDays: firstFunded?.walletAgeDays ?? null,
+        walletAgeDays: null,
         archetype: archetypeResult.archetype,
         tradeCount: pnlSummary.tradeCount,
         volumeUsd: pnlSummary.volumeUsd,
@@ -143,7 +135,16 @@ export async function buildLeaderboard(
   // Save to DB
   await saveLeaderboardToDB(result);
 
+  leaderboardMemoryCache.set(cacheKey(window, limit), {
+    expiresAt: Date.now() + 15 * 60 * 1000,
+    result,
+  });
+
   return result;
+}
+
+function cacheKey(window: TimeWindow, limit: number): string {
+  return `${window}:${limit}`;
 }
 
 async function saveLeaderboardToDB(result: LeaderboardResult): Promise<void> {
@@ -240,12 +241,36 @@ export async function getLatestLeaderboard(
   window: TimeWindow,
   limit: number = 50
 ): Promise<LeaderboardResult> {
-  // Try DB first
-  const cached = await loadLatestLeaderboardFromDB(window);
-  if (cached) {
-    return { ...cached, entries: cached.entries.slice(0, limit) };
+  const key = cacheKey(window, limit);
+
+  const cachedMemory = leaderboardMemoryCache.get(key);
+  if (cachedMemory && cachedMemory.expiresAt > Date.now()) {
+    return cachedMemory.result;
   }
 
-  // Build fresh
-  return buildLeaderboard(window, limit);
+  const inFlight = leaderboardInFlight.get(key);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const requestPromise = (async () => {
+    // Try DB first
+    const cached = await loadLatestLeaderboardFromDB(window);
+    if (cached) {
+      const result = { ...cached, entries: cached.entries.slice(0, limit) };
+      leaderboardMemoryCache.set(key, {
+        expiresAt: Date.now() + 15 * 60 * 1000,
+        result,
+      });
+      return result;
+    }
+
+    // Build fresh
+    return buildLeaderboard(window, limit);
+  })().finally(() => {
+    leaderboardInFlight.delete(key);
+  });
+
+  leaderboardInFlight.set(key, requestPromise);
+  return requestPromise;
 }
