@@ -41,18 +41,62 @@ function extractItems(data: unknown): unknown[] {
   return [];
 }
 
+function parseNumeric(value: unknown): number {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  if (typeof value !== "string") {
+    return 0;
+  }
+
+  const trimmed = value.trim().replace(/[$,]/g, "");
+  if (!trimmed) {
+    return 0;
+  }
+
+  const suffixMatch = trimmed.match(/^(-?[\d.]+)\s*([kKmMbB])$/);
+  if (suffixMatch) {
+    const base = Number(suffixMatch[1]);
+    if (!Number.isFinite(base)) {
+      return 0;
+    }
+
+    const suffix = suffixMatch[2].toLowerCase();
+    const multiplier = suffix === "k" ? 1_000 : suffix === "m" ? 1_000_000 : 1_000_000_000;
+    return base * multiplier;
+  }
+
+  const parsed = Number(trimmed);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function readNumeric(record: Record<string, unknown>, keys: string[]): number {
+  for (const key of keys) {
+    const value = record[key];
+    if (value !== undefined && value !== null) {
+      const parsed = parseNumeric(value);
+      if (parsed !== 0 || value === 0 || value === "0") {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
 function mapPnlSummary(raw: unknown): BirdeyePnlSummary {
   const d = raw as Record<string, unknown>;
   return {
     wallet: (d.wallet as string) || "",
-    totalPnlUsd: Number(d.totalPnlUsd ?? d.total_pnl_usd ?? 0),
-    totalPnlPercent: Number(d.totalPnlPercent ?? d.total_pnl_percent ?? 0),
-    realizedPnlUsd: Number(d.realizedPnlUsd ?? d.realized_pnl_usd ?? 0),
-    unrealizedPnlUsd: Number(d.unrealizedPnlUsd ?? d.unrealized_pnl_usd ?? 0),
-    roiPercent: Number(d.roiPercent ?? d.roi_percent ?? 0),
-    winRate: Number(d.winRate ?? d.win_rate ?? 0),
-    tradeCount: Number(d.tradeCount ?? d.trade_count ?? 0),
-    volumeUsd: Number(d.volumeUsd ?? d.volume_usd ?? 0),
+    totalPnlUsd: readNumeric(d, ["totalPnlUsd", "total_pnl_usd", "totalPnl", "total_pnl", "pnlUsd", "pnl_usd", "pnl"]),
+    totalPnlPercent: readNumeric(d, ["totalPnlPercent", "total_pnl_percent"]),
+    realizedPnlUsd: readNumeric(d, ["realizedPnlUsd", "realized_pnl_usd", "realizedPnl", "realized_pnl"]),
+    unrealizedPnlUsd: readNumeric(d, ["unrealizedPnlUsd", "unrealized_pnl_usd", "unrealizedPnl", "unrealized_pnl"]),
+    roiPercent: readNumeric(d, ["roiPercent", "roi_percent", "roi"]),
+    winRate: readNumeric(d, ["winRate", "win_rate"]),
+    tradeCount: readNumeric(d, ["tradeCount", "trade_count"]),
+    volumeUsd: readNumeric(d, ["volumeUsd", "volume_usd", "volume24h", "volume_24h", "volume", "vol", "tradingVolumeUsd", "trading_volume_usd", "tradeVolumeUsd", "trade_volume_usd"]),
   };
 }
 
@@ -246,11 +290,11 @@ export async function getTraderGainersLosers(
     const r = d as Record<string, unknown>;
     return {
       wallet: (r.address as string) || (r.wallet as string) || (r.owner as string) || "",
-      pnlUsd: Number(r.pnlUsd ?? r.pnl_usd ?? r.pnl ?? 0),
-      roiPercent: Number(r.roiPercent ?? r.roi_percent ?? r.roi ?? 0),
-      winRate: Number(r.winRate ?? r.win_rate ?? 0),
-      tradeCount: Number(r.tradeCount ?? r.trade_count ?? 0),
-      volumeUsd: Number(r.volumeUsd ?? r.volume_usd ?? 0),
+      pnlUsd: readNumeric(r, ["pnlUsd", "pnl_usd", "pnl", "profitUsd", "profit_usd", "profit"]),
+      roiPercent: readNumeric(r, ["roiPercent", "roi_percent", "roi"]),
+      winRate: readNumeric(r, ["winRate", "win_rate"]),
+      tradeCount: readNumeric(r, ["tradeCount", "trade_count"]),
+      volumeUsd: readNumeric(r, ["volumeUsd", "volume_usd", "volume24h", "volume_24h", "volume", "vol", "tradingVolumeUsd", "trading_volume_usd", "tradeVolumeUsd", "trade_volume_usd", "quoteVolume", "quote_volume"]),
     };
   });
 }

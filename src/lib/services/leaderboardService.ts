@@ -64,6 +64,7 @@ export async function buildLeaderboard(
   for (const candidate of toProcess) {
     try {
       const walletAgeDays = 0;
+      const volumeUsd = candidate.volumeUsd;
 
       const pnlSummary = {
         wallet: candidate.wallet,
@@ -74,7 +75,7 @@ export async function buildLeaderboard(
         roiPercent: candidate.roiPercent,
         winRate: candidate.winRate,
         tradeCount: candidate.tradeCount,
-        volumeUsd: candidate.volumeUsd,
+        volumeUsd: volumeUsd,
       };
 
       const pnlConcentration = 0.5; // default, would need PNL details to compute
@@ -253,21 +254,7 @@ export async function getLatestLeaderboard(
     return inFlight;
   }
 
-  const requestPromise = (async () => {
-    // Try DB first
-    const cached = await loadLatestLeaderboardFromDB(window);
-    if (cached) {
-      const result = { ...cached, entries: cached.entries.slice(0, limit) };
-      leaderboardMemoryCache.set(key, {
-        expiresAt: Date.now() + 15 * 60 * 1000,
-        result,
-      });
-      return result;
-    }
-
-    // Build fresh
-    return buildLeaderboard(window, limit);
-  })().finally(() => {
+  const requestPromise = buildLeaderboard(window, limit).finally(() => {
     leaderboardInFlight.delete(key);
   });
 

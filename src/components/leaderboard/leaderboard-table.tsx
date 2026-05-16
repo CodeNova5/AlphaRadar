@@ -8,6 +8,7 @@ interface Entry {
   rank: number;
   wallet: string;
   pnlUsd: number;
+  volumeUsd: number;
   roiPercent: number;
   winRate: number;
   alphaScore: number;
@@ -26,6 +27,7 @@ export function LeaderboardTable({ entries }: { entries: Entry[] }) {
             <th className="px-4 py-3 text-left w-16">#</th>
             <th className="px-4 py-3 text-left">Wallet</th>
             <th className="px-4 py-3 text-right">PNL</th>
+            <th className="px-4 py-3 text-right">7D VOL</th>
             <th className="px-4 py-3 text-right">ROI</th>
             <th className="px-4 py-3 text-right">Win Rate</th>
             <th className="px-4 py-3 text-center">Alpha Score</th>
@@ -53,6 +55,9 @@ export function LeaderboardTable({ entries }: { entries: Entry[] }) {
               </td>
               <td className={`px-4 py-3 text-right font-mono ${entry.pnlUsd >= 0 ? "text-primary" : "text-danger"}`}>
                 {formatUsd(entry.pnlUsd)}
+              </td>
+              <td className="px-4 py-3 text-right font-mono text-muted-foreground">
+                {formatUsd(entry.volumeUsd)}
               </td>
               <td className={`px-4 py-3 text-right font-mono ${entry.roiPercent >= 0 ? "text-primary" : "text-danger"}`}>
                 {formatPercent(entry.roiPercent)}

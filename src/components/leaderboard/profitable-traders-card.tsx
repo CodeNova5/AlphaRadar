@@ -1,10 +1,12 @@
 import Link from "next/link";
-import { formatUsd, shortenAddress } from "@/components/shared/format";
+import { formatUsd, formatPercent, shortenAddress } from "@/components/shared/format";
 
 interface Entry {
   rank: number;
   wallet: string;
   pnlUsd: number;
+  roiPercent: number;
+  winRate: number;
   volumeUsd: number;
 }
 
@@ -43,9 +45,11 @@ export function ProfitableTradersCard({ entries }: { entries: Entry[] }) {
         </Link>
       </div>
 
-      <div className="grid grid-cols-[1.55fr_0.75fr_0.75fr] gap-3 border-b border-white/5 bg-white/[0.02] px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground sm:px-5">
+      <div className="grid grid-cols-[1.55fr_0.7fr_0.7fr_0.55fr_0.55fr] gap-3 border-b border-white/5 bg-white/[0.02] px-4 py-3 text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground sm:px-5">
         <span>Trader</span>
         <span className="text-right">7d PnL</span>
+        <span className="text-right">ROI</span>
+        <span className="text-right">Win Rate</span>
         <span className="text-right">7d Vol</span>
       </div>
 
@@ -53,7 +57,7 @@ export function ProfitableTradersCard({ entries }: { entries: Entry[] }) {
         {topEntries.map((entry) => (
           <div
             key={entry.wallet}
-            className="grid grid-cols-[1.55fr_0.75fr_0.75fr] items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.03] sm:px-5"
+            className="grid grid-cols-[1.55fr_0.7fr_0.7fr_0.55fr_0.55fr] items-center gap-3 px-4 py-3 transition-colors hover:bg-white/[0.03] sm:px-5"
           >
             <div className="flex min-w-0 items-center gap-3">
               <TraderMark wallet={entry.wallet} rank={entry.rank} />
@@ -70,6 +74,14 @@ export function ProfitableTradersCard({ entries }: { entries: Entry[] }) {
 
             <div className={`text-right font-mono text-sm ${entry.pnlUsd >= 0 ? "text-emerald-400" : "text-danger"}`}>
               {formatUsd(entry.pnlUsd)}
+            </div>
+
+            <div className={`text-right font-mono text-sm ${entry.roiPercent >= 0 ? "text-emerald-400" : "text-danger"}`}>
+              {formatPercent(entry.roiPercent)}
+            </div>
+
+            <div className="text-right font-mono text-sm text-foreground/90">
+              {(entry.winRate * 100).toFixed(0)}%
             </div>
 
             <div className="text-right font-mono text-sm text-foreground/90">

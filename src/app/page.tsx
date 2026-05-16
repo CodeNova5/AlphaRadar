@@ -6,6 +6,7 @@ import { WindowSelector } from "@/components/shared/window-selector";
 import { ProfitableTradersCard } from "@/components/leaderboard/profitable-traders-card";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import { LoadingSpinner, ErrorState, EmptyState } from "@/components/shared/loading";
+import { formatPercent, formatUsd } from "@/components/shared/format";
 
 interface LeaderboardEntry {
   rank: number;
@@ -28,6 +29,15 @@ export default function LeaderboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [generatedAt, setGeneratedAt] = useState("");
+
+  const summary = entries.length > 0
+    ? {
+        topPnl: Math.max(...entries.map((entry) => entry.pnlUsd)),
+        avgRoi: entries.reduce((sum, entry) => sum + entry.roiPercent, 0) / entries.length,
+        avgWinRate: entries.reduce((sum, entry) => sum + entry.winRate, 0) / entries.length,
+        avgVolume: entries.reduce((sum, entry) => sum + entry.volumeUsd, 0) / entries.length,
+      }
+    : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -83,6 +93,29 @@ export default function LeaderboardPage() {
           </p>
         )}
       </div>
+
+      {!loading && !error && summary && (
+        <div className="mb-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-xl border border-card-border bg-surface/70 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Top PnL</p>
+            <p className="mt-2 text-xl font-semibold text-emerald-400">{formatUsd(summary.topPnl)}</p>
+          </div>
+          <div className="rounded-xl border border-card-border bg-surface/70 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg ROI</p>
+            <p className={`mt-2 text-xl font-semibold ${summary.avgRoi >= 0 ? "text-primary" : "text-danger"}`}>
+              {formatPercent(summary.avgRoi)}
+            </p>
+          </div>
+          <div className="rounded-xl border border-card-border bg-surface/70 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg Win Rate</p>
+            <p className="mt-2 text-xl font-semibold text-foreground">{(summary.avgWinRate * 100).toFixed(0)}%</p>
+          </div>
+          <div className="rounded-xl border border-card-border bg-surface/70 px-4 py-3">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Avg 7D Vol</p>
+            <p className="mt-2 text-xl font-semibold text-foreground">{formatUsd(summary.avgVolume)}</p>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <LoadingSpinner text="Loading leaderboard..." />
