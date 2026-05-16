@@ -63,28 +63,36 @@ export async function getWalletPnlSummary(
   const counts = (summary.counts as Record<string, unknown>) ?? {};
   const cashflow = (summary.cashflow_usd as Record<string, unknown>) ?? {};
   const pnl = (summary.pnl as Record<string, unknown>) ?? {};
+  const realizedPnlUsd = num(pnl.realized_profit_usd);
+  const unrealizedPnlUsd = num(pnl.unrealized_usd);
+  const totalPnlUsd = num(pnl.total_usd) || realizedPnlUsd + unrealizedPnlUsd;
+  const investedUsd = num(cashflow.total_invested) + num(cashflow.total_sold);
+  const realizedRoiPercent = num(pnl.realized_profit_percent) * 100;
+  const derivedRoiPercent = investedUsd > 0 ? (totalPnlUsd / investedUsd) * 100 : 0;
 
   // Compute win rate: prefer win_rate field, fall back to total_win/total_loss
   let winRate = num(counts.win_rate);
+  const totalWin = num(counts.total_win);
+  const totalLoss = num(counts.total_loss);
+  const totalDecided = totalWin + totalLoss;
   if (winRate === 0) {
-    const totalWin = num(counts.total_win);
-    const totalLoss = num(counts.total_loss);
-    const totalDecided = totalWin + totalLoss;
     if (totalDecided > 0) {
       winRate = totalWin / totalDecided;
     }
   }
+  const derivedWinRate = totalDecided > 0 ? totalWin / totalDecided : 0;
+  const finalWinRate = winRate || derivedWinRate;
 
   return {
     wallet,
-    totalPnlUsd: num(pnl.total_usd),
+    totalPnlUsd,
     totalPnlPercent: num(pnl.realized_profit_percent) * 100,
-    realizedPnlUsd: num(pnl.realized_profit_usd),
-    unrealizedPnlUsd: num(pnl.unrealized_usd),
-    roiPercent: num(pnl.realized_profit_percent) * 100,
-    winRate,
+    realizedPnlUsd,
+    unrealizedPnlUsd,
+    roiPercent: realizedRoiPercent || derivedRoiPercent,
+    winRate: finalWinRate,
     tradeCount: num(counts.total_trade),
-    volumeUsd: num(cashflow.total_invested) + num(cashflow.total_sold),
+    volumeUsd: investedUsd,
   };
 }
 

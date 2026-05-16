@@ -140,26 +140,31 @@ export async function buildWalletProfile(
     ? Math.max(...enrichedPnlDetails.map((t) => Math.abs(t.realizedPnlUsd)))
     : 0;
   const pnlConcentration = totalPnl > 0 ? topTokenPnl / totalPnl : 0;
+  const detailsTotalPnlUsd = enrichedPnlDetails.reduce((sum, token) => sum + token.realizedPnlUsd, 0);
+  const detailsVolumeUsd = enrichedPnlDetails.reduce((sum, token) => sum + token.volumeUsd, 0);
+  const derivedRoiPercent = detailsVolumeUsd > 0 ? (detailsTotalPnlUsd / detailsVolumeUsd) * 100 : 0;
 
   // Compute win rate from PNL details if summary returns 0
   let winRate = pnlSummary?.winRate ?? 0;
-  if (winRate === 0 && enrichedPnlDetails.length > 0) {
+  let derivedWinRate = 0;
+  if (enrichedPnlDetails.length > 0) {
     const wins = enrichedPnlDetails.filter((t) => t.realizedPnlUsd > 0).length;
     const total = enrichedPnlDetails.filter((t) => t.realizedPnlUsd !== 0).length;
-    winRate = total > 0 ? wins / total : 0;
+    derivedWinRate = total > 0 ? wins / total : 0;
   }
+  const finalWinRate = winRate || derivedWinRate;
 
   const summary = pnlSummary
     ? {
-        pnlUsd: pnlSummary.totalPnlUsd,
-        roiPercent: pnlSummary.roiPercent,
-        winRate,
+        pnlUsd: pnlSummary.totalPnlUsd || detailsTotalPnlUsd,
+        roiPercent: pnlSummary.roiPercent || derivedRoiPercent,
+        winRate: finalWinRate,
         tradeCount: pnlSummary.tradeCount,
         volumeUsd: pnlSummary.volumeUsd,
         realizedPnlUsd: pnlSummary.realizedPnlUsd,
         unrealizedPnlUsd: pnlSummary.unrealizedPnlUsd,
       }
-    : { pnlUsd: 0, roiPercent: 0, winRate, tradeCount: 0, volumeUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: 0 };
+    : { pnlUsd: 0, roiPercent: 0, winRate: finalWinRate, tradeCount: 0, volumeUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: 0 };
 
   const totalHoldingsValue = (holdings ?? []).reduce((sum, holding) => sum + holding.valueUsd, 0);
   const normalizedHoldings = (holdings ?? []).map((holding) => ({
