@@ -83,7 +83,3 @@ export interface BirdeyeTraderRow {
   tradeCount: number;
   volumeUsd: number;
 }
-
-export interface BirdeyeGainersLosersResponse {
-  traders: BirdeyeTraderRow[];
-}

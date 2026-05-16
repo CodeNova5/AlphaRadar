@@ -1,4 +1,4 @@
-import { getTraderGainersLosers } from "@/lib/birdeye/endpoints";
+import { getTraderGainersLosers, getWalletPnlSummary, getWalletFirstFunded } from "@/lib/birdeye/endpoints";
 import type { TimeWindow, BirdeyeTraderRow } from "@/lib/birdeye/types";
 import { computeAlphaScore } from "@/lib/scoring/walletAlphaScore";
 import { classifyArchetype } from "@/lib/scoring/archetypes";
@@ -36,12 +36,11 @@ export async function buildLeaderboard(
 ): Promise<LeaderboardResult> {
   const warnings: string[] = [];
 
-  // Step 1: Get candidate wallets
+  // Step 1: Get candidate wallets from gainers-losers
   let candidates: BirdeyeTraderRow[];
   try {
     candidates = await getTraderGainersLosers(window);
   } catch (e) {
-    // Try to load from DB cache
     const cached = await loadLatestLeaderboardFromDB(window);
     if (cached) {
       return { ...cached, warnings: [...warnings, `Birdeye unavailable, using cached data: ${(e as Error).message}`] };
@@ -57,36 +56,44 @@ export async function buildLeaderboard(
     return true;
   });
 
-  // Step 2: Enrich and score each wallet
+  // Step 2: Enrich each wallet with PNL summary (for winRate, roiPercent, tradeCount)
   const entries: LeaderboardEntry[] = [];
-  const toProcess = unique.slice(0, Math.min(limit * 2, 100)); // fetch more than needed, some may fail
+  const toProcess = unique.slice(0, Math.min(limit * 2, 100));
 
   for (const candidate of toProcess) {
     try {
-      const walletAgeDays = 0;
-      const volumeUsd = candidate.volumeUsd;
+      // Try to get PNL summary for accurate winRate, roi, tradeCount
+      let pnlSummary = null;
+      let firstFunded = null;
 
-      const pnlSummary = {
-        wallet: candidate.wallet,
-        totalPnlUsd: candidate.pnlUsd,
-        totalPnlPercent: 0,
-        realizedPnlUsd: candidate.pnlUsd,
-        unrealizedPnlUsd: 0,
-        roiPercent: candidate.roiPercent,
-        winRate: candidate.winRate,
-        tradeCount: candidate.tradeCount,
-        volumeUsd: volumeUsd,
-      };
+      try {
+        pnlSummary = await getWalletPnlSummary(candidate.wallet, window);
+      } catch {
+        // PNL summary unavailable, use candidate data
+      }
 
-      const pnlConcentration = 0.5; // default, would need PNL details to compute
+      try {
+        firstFunded = await getWalletFirstFunded(candidate.wallet);
+      } catch {
+        // Non-critical
+      }
+
+      const pnlUsd = pnlSummary?.totalPnlUsd ?? candidate.pnlUsd;
+      const roiPercent = pnlSummary?.roiPercent ?? 0;
+      const winRate = pnlSummary?.winRate ?? 0;
+      const tradeCount = pnlSummary?.tradeCount ?? candidate.tradeCount;
+      const volumeUsd = pnlSummary?.volumeUsd ?? candidate.volumeUsd;
+      const walletAgeDays = firstFunded?.walletAgeDays ?? null;
+
+      const pnlConcentration = 0.5;
       const scoreInput: ScoreInput = {
-        realizedPnlUsd: pnlSummary.realizedPnlUsd,
-        roiPercent: pnlSummary.roiPercent,
-        winRate: pnlSummary.winRate,
-        tradeCount: pnlSummary.tradeCount,
-        tokenCount: 5, // estimate
-        walletAgeDays,
-        volumeUsd: pnlSummary.volumeUsd,
+        realizedPnlUsd: pnlSummary?.realizedPnlUsd ?? candidate.pnlUsd,
+        roiPercent,
+        winRate,
+        tradeCount,
+        tokenCount: 5,
+        walletAgeDays: walletAgeDays ?? 0,
+        volumeUsd,
         recentActivity: true,
         pnlConcentration,
       };
@@ -94,28 +101,28 @@ export async function buildLeaderboard(
       const scoreResult = computeAlphaScore(scoreInput);
       const archetypeResult = classifyArchetype({
         alphaScore: scoreResult.alphaScore,
-        roiPercent: pnlSummary.roiPercent,
-        winRate: pnlSummary.winRate,
+        roiPercent,
+        winRate,
         pnlConcentration,
         recentActivity: true,
-        realizedPnlUsd: pnlSummary.realizedPnlUsd,
-        tradeCount: pnlSummary.tradeCount,
-        walletAgeDays,
+        realizedPnlUsd: pnlSummary?.realizedPnlUsd ?? candidate.pnlUsd,
+        tradeCount,
+        walletAgeDays: walletAgeDays ?? 0,
       });
 
       entries.push({
-        rank: 0, // assigned after sort
+        rank: 0,
         wallet: candidate.wallet,
-        pnlUsd: pnlSummary.totalPnlUsd,
-        roiPercent: pnlSummary.roiPercent,
-        winRate: pnlSummary.winRate,
+        pnlUsd,
+        roiPercent,
+        winRate,
         alphaScore: scoreResult.alphaScore,
         alphaClass: scoreResult.alphaClass,
         confidence: scoreResult.confidence,
-        walletAgeDays: null,
+        walletAgeDays,
         archetype: archetypeResult.archetype,
-        tradeCount: pnlSummary.tradeCount,
-        volumeUsd: pnlSummary.volumeUsd,
+        tradeCount,
+        volumeUsd,
       });
     } catch (e) {
       warnings.push(`Failed to score wallet ${candidate.wallet}: ${(e as Error).message}`);
@@ -133,7 +140,6 @@ export async function buildLeaderboard(
     warnings,
   };
 
-  // Save to DB
   await saveLeaderboardToDB(result);
 
   leaderboardMemoryCache.set(cacheKey(window, limit), {
@@ -252,6 +258,14 @@ export async function getLatestLeaderboard(
   const inFlight = leaderboardInFlight.get(key);
   if (inFlight) {
     return inFlight;
+  }
+
+  // Try DB cache first
+  const cachedDB = await loadLatestLeaderboardFromDB(window);
+  if (cachedDB) {
+    const result = { ...cachedDB, entries: cachedDB.entries.slice(0, limit) };
+    leaderboardMemoryCache.set(key, { expiresAt: Date.now() + 15 * 60 * 1000, result });
+    return result;
   }
 
   const requestPromise = buildLeaderboard(window, limit).finally(() => {
