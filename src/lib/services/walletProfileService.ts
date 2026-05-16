@@ -116,7 +116,7 @@ export async function buildWalletProfile(
   // Enrich token metadata for PNL details
   let enrichedPnlDetails = pnlDetails ?? [];
   if (enrichedPnlDetails.length > 0) {
-    const missingMeta = enrichedPnlDetails.filter((t) => !t.symbol);
+    const missingMeta = enrichedPnlDetails.filter((t) => !t.symbol || !t.name || !t.logoUri);
     if (missingMeta.length > 0) {
       try {
         const metas = await getTokenMetadata(missingMeta.map((t) => t.tokenAddress));
@@ -152,6 +152,12 @@ export async function buildWalletProfile(
         unrealizedPnlUsd: pnlSummary.unrealizedPnlUsd,
       }
     : { pnlUsd: 0, roiPercent: 0, winRate: 0, tradeCount: 0, volumeUsd: 0, realizedPnlUsd: 0, unrealizedPnlUsd: 0 };
+
+  const totalHoldingsValue = (holdings ?? []).reduce((sum, holding) => sum + holding.valueUsd, 0);
+  const normalizedHoldings = (holdings ?? []).map((holding) => ({
+    ...holding,
+    portfolioWeight: totalHoldingsValue > 0 ? holding.valueUsd / totalHoldingsValue : 0,
+  }));
 
   const scoreInput: ScoreInput = {
     realizedPnlUsd: summary.realizedPnlUsd,
@@ -216,7 +222,7 @@ export async function buildWalletProfile(
       realizedPnlUsd: t.realizedPnlUsd,
       roiPercent: t.roiPercent,
     })),
-    currentHoldings: (holdings ?? []).map((h) => ({
+    currentHoldings: normalizedHoldings.map((h) => ({
       tokenAddress: h.tokenAddress,
       symbol: h.symbol,
       name: h.name,

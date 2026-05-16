@@ -43,9 +43,11 @@ async function acquireSlot(): Promise<void> {
   await next;
 }
 
-export async function birdeyeGet<T>(
+async function birdeyeRequest<T>(
+  method: "GET" | "POST",
   endpoint: string,
-  params?: Record<string, string>
+  params?: Record<string, string>,
+  body?: Record<string, unknown>
 ): Promise<T> {
   const url = new URL(`${config.birdeye.baseUrl}${endpoint}`);
   if (params) {
@@ -66,12 +68,13 @@ export async function birdeyeGet<T>(
 
     try {
       const res = await fetch(url.toString(), {
-        method: "GET",
+        method,
         headers: {
           "X-API-KEY": apiKey,
           "x-chain": config.birdeye.defaultChain,
           "Content-Type": "application/json",
         },
+        body: body ? JSON.stringify(body) : undefined,
         signal: controller.signal,
       });
 
@@ -134,4 +137,19 @@ export async function birdeyeGet<T>(
   }
 
   throw lastError || new BirdeyeError(endpoint, 0, "Birdeye request failed after retries");
+}
+
+export async function birdeyeGet<T>(
+  endpoint: string,
+  params?: Record<string, string>
+): Promise<T> {
+  return birdeyeRequest<T>("GET", endpoint, params);
+}
+
+export async function birdeyePost<T>(
+  endpoint: string,
+  body?: Record<string, unknown>,
+  params?: Record<string, string>
+): Promise<T> {
+  return birdeyeRequest<T>("POST", endpoint, params, body);
 }

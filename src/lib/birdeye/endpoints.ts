@@ -1,4 +1,4 @@
-import { birdeyeGet } from "./client";
+import { birdeyeGet, birdeyePost } from "./client";
 import { BirdeyeError } from "./client";
 import type {
   TimeWindow,
@@ -37,8 +37,22 @@ function extractItems(data: unknown): unknown[] {
   const rec = data as Record<string, unknown>;
   if (rec?.items && Array.isArray(rec.items)) return rec.items;
   if (rec?.tokens && Array.isArray(rec.tokens)) return rec.tokens;
+  if (rec?.history && Array.isArray(rec.history)) return rec.history;
   if (rec?.traders && Array.isArray(rec.traders)) return rec.traders;
   return [];
+}
+
+function unwrapWalletPayload(data: unknown): Record<string, unknown> {
+  if (!data || typeof data !== "object") {
+    return {};
+  }
+
+  const record = data as Record<string, unknown>;
+  if (record.data && typeof record.data === "object") {
+    return record.data as Record<string, unknown>;
+  }
+
+  return record;
 }
 
 function parseNumeric(value: unknown): number {
@@ -86,33 +100,65 @@ function readNumeric(record: Record<string, unknown>, keys: string[]): number {
 }
 
 function mapPnlSummary(raw: unknown): BirdeyePnlSummary {
-  const d = raw as Record<string, unknown>;
+  const payload = unwrapWalletPayload(raw);
+  const summary = payload.summary && typeof payload.summary === "object"
+    ? (payload.summary as Record<string, unknown>)
+    : payload;
+  const counts = summary.counts && typeof summary.counts === "object"
+    ? (summary.counts as Record<string, unknown>)
+    : {};
+  const cashflow = summary.cashflow_usd && typeof summary.cashflow_usd === "object"
+    ? (summary.cashflow_usd as Record<string, unknown>)
+    : {};
+  const pnl = summary.pnl && typeof summary.pnl === "object"
+    ? (summary.pnl as Record<string, unknown>)
+    : {};
+
   return {
-    wallet: (d.wallet as string) || "",
-    totalPnlUsd: readNumeric(d, ["totalPnlUsd", "total_pnl_usd", "totalPnl", "total_pnl", "pnlUsd", "pnl_usd", "pnl"]),
-    totalPnlPercent: readNumeric(d, ["totalPnlPercent", "total_pnl_percent"]),
-    realizedPnlUsd: readNumeric(d, ["realizedPnlUsd", "realized_pnl_usd", "realizedPnl", "realized_pnl"]),
-    unrealizedPnlUsd: readNumeric(d, ["unrealizedPnlUsd", "unrealized_pnl_usd", "unrealizedPnl", "unrealized_pnl"]),
-    roiPercent: readNumeric(d, ["roiPercent", "roi_percent", "roi"]),
-    winRate: readNumeric(d, ["winRate", "win_rate"]),
-    tradeCount: readNumeric(d, ["tradeCount", "trade_count"]),
-    volumeUsd: readNumeric(d, ["volumeUsd", "volume_usd", "volume24h", "volume_24h", "volume", "vol", "tradingVolumeUsd", "trading_volume_usd", "tradeVolumeUsd", "trade_volume_usd"]),
+    wallet: (summary.wallet as string) || (payload.wallet as string) || "",
+    totalPnlUsd:
+      readNumeric(summary, ["totalPnlUsd", "total_pnl_usd", "totalPnl", "total_pnl", "pnlUsd", "pnl_usd", "pnl", "total_usd"]) ||
+      readNumeric(pnl, ["total_usd"]),
+    totalPnlPercent:
+      readNumeric(summary, ["totalPnlPercent", "total_pnl_percent", "total_percent"]) ||
+      readNumeric(pnl, ["total_percent"]),
+    realizedPnlUsd:
+      readNumeric(summary, ["realizedPnlUsd", "realized_pnl_usd", "realizedPnl", "realized_pnl"]) ||
+      readNumeric(pnl, ["realized_profit_usd"]),
+    unrealizedPnlUsd:
+      readNumeric(summary, ["unrealizedPnlUsd", "unrealized_pnl_usd", "unrealizedPnl", "unrealized_pnl"]) ||
+      readNumeric(pnl, ["unrealized_usd"]),
+    roiPercent:
+      readNumeric(summary, ["roiPercent", "roi_percent", "roi"]) ||
+      readNumeric(pnl, ["realized_profit_percent", "total_percent"]),
+    winRate:
+      readNumeric(counts, ["win_rate"]) ||
+      readNumeric(summary, ["winRate", "win_rate"]),
+    tradeCount:
+      readNumeric(counts, ["total_trade"]) ||
+      readNumeric(summary, ["tradeCount", "trade_count"]),
+    volumeUsd:
+      readNumeric(cashflow, ["total_invested", "total_sold", "current_value"]) ||
+      readNumeric(summary, ["volumeUsd", "volume_usd", "volume24h", "volume_24h", "volume", "vol", "tradingVolumeUsd", "trading_volume_usd", "tradeVolumeUsd", "trade_volume_usd"]),
   };
 }
 
 function mapTokenPnl(raw: unknown): BirdeyeTokenPnl {
   const d = raw as Record<string, unknown>;
+  const counts = d.counts && typeof d.counts === "object" ? (d.counts as Record<string, unknown>) : {};
+  const cashflow = d.cashflow_usd && typeof d.cashflow_usd === "object" ? (d.cashflow_usd as Record<string, unknown>) : {};
+  const pnl = d.pnl && typeof d.pnl === "object" ? (d.pnl as Record<string, unknown>) : {};
   return {
     tokenAddress: (d.address as string) || (d.tokenAddress as string) || "",
     symbol: (d.symbol as string) || "",
     name: (d.name as string) || "",
-    logoUri: (d.logoURI as string) || (d.logoUri as string) || "",
-    realizedPnlUsd: Number(d.realizedPnlUsd ?? d.realized_pnl_usd ?? 0),
-    unrealizedPnlUsd: Number(d.unrealizedPnlUsd ?? d.unrealized_pnl_usd ?? 0),
-    roiPercent: Number(d.roiPercent ?? d.roi_percent ?? 0),
-    buyCount: Number(d.buyCount ?? d.buy_count ?? 0),
-    sellCount: Number(d.sellCount ?? d.sell_count ?? 0),
-    volumeUsd: Number(d.volumeUsd ?? d.volume_usd ?? 0),
+    logoUri: (d.logoURI as string) || (d.logoUri as string) || (d.icon as string) || "",
+    realizedPnlUsd: Number(d.realizedPnlUsd ?? d.realized_pnl_usd ?? pnl.realized_profit_usd ?? 0),
+    unrealizedPnlUsd: Number(d.unrealizedPnlUsd ?? d.unrealized_pnl_usd ?? pnl.unrealized_usd ?? 0),
+    roiPercent: Number(d.roiPercent ?? d.roi_percent ?? pnl.realized_profit_percent ?? pnl.total_percent ?? 0),
+    buyCount: Number(d.buyCount ?? d.buy_count ?? counts.total_buy ?? 0),
+    sellCount: Number(d.sellCount ?? d.sell_count ?? counts.total_sell ?? 0),
+    volumeUsd: Number(d.volumeUsd ?? d.volume_usd ?? cashflow.total_invested ?? cashflow.total_sold ?? 0),
     lastActivityAt: (d.lastActivityAt as string) ?? (d.last_activity_at as string) ?? null,
   };
 }
@@ -123,7 +169,7 @@ export async function getWalletPnlSummary(
 ): Promise<BirdeyePnlSummary> {
   const data = await birdeyeGet<unknown>("/wallet/v2/pnl/summary", {
     wallet,
-    time_window: window,
+    duration: window,
   });
   return mapPnlSummary(data);
 }
@@ -132,9 +178,13 @@ export async function getWalletPnlDetails(
   wallet: string,
   window: TimeWindow
 ): Promise<BirdeyeTokenPnl[]> {
-  const data = await birdeyeGet<unknown>("/wallet/v2/pnl/details", {
+  const data = await birdeyePost<unknown>("/wallet/v2/pnl/details", {
     wallet,
-    time_window: window,
+    duration: window,
+    sort_type: "desc",
+    sort_by: "last_trade",
+    limit: 100,
+    offset: 0,
   });
   return extractItems(data).map(mapTokenPnl);
 }
@@ -145,13 +195,16 @@ export async function getWalletNetWorth(
 ): Promise<BirdeyeNetWorthPoint[]> {
   const data = await birdeyeGet<unknown>("/wallet/v2/net-worth", {
     wallet,
-    time_window: window,
+    count: window === "24h" ? "24" : window === "7d" ? "7" : "30",
+    direction: "back",
+    type: window === "24h" ? "1h" : "1d",
+    sort_type: "desc",
   });
   return extractItems(data).map((d: unknown) => {
     const r = d as Record<string, unknown>;
     return {
-      timestamp: Number(r.timestamp ?? r.time ?? 0),
-      valueUsd: Number(r.valueUsd ?? r.value_usd ?? r.value ?? 0),
+      timestamp: new Date((r.timestamp ?? r.time ?? r.date ?? 0) as string | number).getTime(),
+      valueUsd: Number(r.net_worth ?? r.valueUsd ?? r.value_usd ?? r.value ?? 0),
     };
   });
 }
@@ -163,7 +216,7 @@ export async function getWalletTokenList(
     return [];
   }
 
-  const data = await birdeyeGet<unknown>("/v1/wallet/token_list", { wallet }).catch((err) => {
+  const data = await birdeyeGet<unknown>("/v1/wallet/token_list", { wallet, ui_amount_mode: "scaled" }).catch((err) => {
     if (err instanceof BirdeyeError && (err.status === 401 || err.status === 403 || err.status === 404)) {
       tokenListDisabledUntil = Date.now() + 60 * 60 * 1000;
       return null;
@@ -181,8 +234,8 @@ export async function getWalletTokenList(
       tokenAddress: (r.address as string) || (r.tokenAddress as string) || (r.mint as string) || "",
       symbol: (r.symbol as string) || "",
       name: (r.name as string) || "",
-      logoUri: (r.logoURI as string) || (r.logoUri as string) || "",
-      balance: Number(r.balance ?? r.amount ?? 0),
+      logoUri: (r.logoURI as string) || (r.logoUri as string) || (r.icon as string) || "",
+      balance: Number(r.uiAmount ?? r.balance ?? r.amount ?? 0),
       valueUsd: Number(r.valueUsd ?? r.value_usd ?? r.usdValue ?? 0),
       portfolioWeight: Number(r.portfolioWeight ?? r.portfolio_weight ?? r.percent ?? 0),
     };
@@ -196,10 +249,10 @@ export async function getWalletFirstFunded(
     return { wallet, firstFundedAt: null, walletAgeDays: null };
   }
 
-  const data = await birdeyeGet<unknown>("/wallet/v2/tx/first-funded", {
-    wallet,
+  const data = await birdeyePost<unknown>("/wallet/v2/tx/first-funded", {
+    wallets: [wallet],
   }).catch((err) => {
-    if (err instanceof BirdeyeError && err.status === 404) {
+    if (err instanceof BirdeyeError && (err.status === 401 || err.status === 403 || err.status === 404)) {
       firstFundedDisabledUntil = Date.now() + 60 * 60 * 1000;
       return null;
     }
@@ -211,7 +264,11 @@ export async function getWalletFirstFunded(
   }
 
   const r = data as Record<string, unknown>;
-  const firstFundedAt = (r.firstFundedAt ?? r.first_funded_at ?? null) as string | null;
+  const entry = (r[wallet] ?? Object.values(r)[0] ?? {}) as Record<string, unknown>;
+  const blockUnixTime = Number(entry.block_unix_time ?? entry.blockUnixTime ?? 0);
+  const firstFundedAt = blockUnixTime > 0
+    ? new Date(blockUnixTime * 1000).toISOString()
+    : (entry.firstFundedAt ?? entry.first_funded_at ?? null) as string | null;
   let walletAgeDays: number | null = null;
   if (firstFundedAt) {
     const diff = Date.now() - new Date(firstFundedAt).getTime();
@@ -225,7 +282,7 @@ export async function getTokenMetadata(
 ): Promise<BirdeyeTokenMetadata[]> {
   if (tokenAddresses.length === 0) return [];
   const data = await birdeyeGet<unknown>("/defi/v3/token/meta-data/multiple", {
-    list_token: tokenAddresses.join(","),
+    list_address: tokenAddresses.join(","),
   });
   const items: unknown[] = Array.isArray(data) ? data : Object.values(data as Record<string, unknown>);
   return items.map((d: unknown) => {
@@ -234,7 +291,7 @@ export async function getTokenMetadata(
       address: (r.address as string) || (r.mint as string) || "",
       symbol: (r.symbol as string) || "",
       name: (r.name as string) || "",
-      logoUri: (r.logoURI as string) || (r.logoUri as string) || "",
+      logoUri: (r.logoURI as string) || (r.logoUri as string) || (r.logo_uri as string) || "",
       decimals: Number(r.decimals ?? 0),
       chain: (r.chain as string) || "solana",
     };
