@@ -70,36 +70,47 @@ export async function buildWalletProfile(
 ): Promise<{ profile: WalletProfile; warnings: string[] }> {
   const warnings: string[] = [];
 
+  // Parallelize all Birdeye API calls
+  const results = await Promise.allSettled([
+    getWalletPnlSummary(wallet, window),
+    getWalletPnlDetails(wallet, window),
+    getWalletNetWorth(wallet, window),
+    getWalletTokenList(wallet),
+    getWalletFirstFunded(wallet),
+  ]);
+
+  const [pnlSummaryResult, pnlDetailsResult, netWorthResult, holdingsResult, firstFundedResult] = results;
+
   let pnlSummary, pnlDetails, netWorth, holdings, firstFunded;
 
-  try {
-    pnlSummary = await getWalletPnlSummary(wallet, window);
-  } catch (e) {
-    warnings.push(`PNL summary unavailable: ${(e as Error).message}`);
+  if (pnlSummaryResult.status === "fulfilled") {
+    pnlSummary = pnlSummaryResult.value;
+  } else {
+    warnings.push(`PNL summary unavailable: ${pnlSummaryResult.reason.message}`);
   }
 
-  try {
-    pnlDetails = await getWalletPnlDetails(wallet, window);
-  } catch (e) {
-    warnings.push(`PNL details unavailable: ${(e as Error).message}`);
+  if (pnlDetailsResult.status === "fulfilled") {
+    pnlDetails = pnlDetailsResult.value;
+  } else {
+    warnings.push(`PNL details unavailable: ${pnlDetailsResult.reason.message}`);
   }
 
-  try {
-    netWorth = await getWalletNetWorth(wallet, window);
-  } catch (e) {
-    warnings.push(`Net worth history unavailable: ${(e as Error).message}`);
+  if (netWorthResult.status === "fulfilled") {
+    netWorth = netWorthResult.value;
+  } else {
+    warnings.push(`Net worth history unavailable: ${netWorthResult.reason.message}`);
   }
 
-  try {
-    holdings = await getWalletTokenList(wallet);
-  } catch (e) {
-    warnings.push(`Current holdings unavailable: ${(e as Error).message}`);
+  if (holdingsResult.status === "fulfilled") {
+    holdings = holdingsResult.value;
+  } else {
+    warnings.push(`Current holdings unavailable: ${holdingsResult.reason.message}`);
   }
 
-  try {
-    firstFunded = await getWalletFirstFunded(wallet);
-  } catch (e) {
-    warnings.push(`First-funded data unavailable: ${(e as Error).message}`);
+  if (firstFundedResult.status === "fulfilled") {
+    firstFunded = firstFundedResult.value;
+  } else {
+    warnings.push(`First-funded data unavailable: ${firstFundedResult.reason.message}`);
   }
 
   // Enrich token metadata for PNL details

@@ -16,7 +16,7 @@ import type {
 type TraderGainersLosersType = "today" | "yesterday" | "1W";
 
 let firstFundedDisabledUntil = 0;
-let walletTokenListDisabledUntil = 0;
+let tokenListDisabledUntil = 0;
 
 function toTraderGainersLosersType(window: TimeWindow): TraderGainersLosersType {
   switch (window) {
@@ -115,13 +115,13 @@ export async function getWalletNetWorth(
 export async function getWalletTokenList(
   wallet: string
 ): Promise<BirdeyeHolding[]> {
-  if (Date.now() < walletTokenListDisabledUntil) {
+  if (Date.now() < tokenListDisabledUntil) {
     return [];
   }
 
   const data = await birdeyeGet<unknown>("/v1/wallet/token_list", { wallet }).catch((err) => {
-    if (err instanceof BirdeyeError && [401, 403, 404].includes(err.status)) {
-      walletTokenListDisabledUntil = Date.now() + 60 * 60 * 1000;
+    if (err instanceof BirdeyeError && (err.status === 401 || err.status === 403 || err.status === 404)) {
+      tokenListDisabledUntil = Date.now() + 60 * 60 * 1000;
       return null;
     }
     throw err;

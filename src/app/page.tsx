@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { WalletSearchInput } from "@/components/shared/wallet-search-input";
 import { WindowSelector } from "@/components/shared/window-selector";
+import { ProfitableTradersCard } from "@/components/leaderboard/profitable-traders-card";
 import { LeaderboardTable } from "@/components/leaderboard/leaderboard-table";
 import { LoadingSpinner, ErrorState, EmptyState } from "@/components/shared/loading";
 
@@ -12,6 +13,8 @@ interface LeaderboardEntry {
   pnlUsd: number;
   roiPercent: number;
   winRate: number;
+  tradeCount: number;
+  volumeUsd: number;
   alphaScore: number;
   alphaClass: string;
   confidence: string;
@@ -66,7 +69,13 @@ export default function LeaderboardPage() {
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-6">
+      {!loading && !error && entries.length > 0 && (
+        <div className="mb-8">
+          <ProfitableTradersCard entries={entries} />
+        </div>
+      )}
+
+      <div id="full-leaderboard" className="flex items-center justify-between mb-6 scroll-mt-24">
         <WindowSelector value={window} onChange={setWindow} />
         {generatedAt && (
           <p className="text-xs text-muted-foreground">
