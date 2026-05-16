@@ -1,5 +1,34 @@
 import { config } from "@/lib/config";
 
+const BIRDEYE_MIN_INTERVAL_MS = Number(process.env.BIRDEYE_MIN_INTERVAL_MS || "1000");
+
+let birdeyeQueue: Promise<void> = Promise.resolve();
+let nextBirdeyeRequestAt = 0;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForBirdeyeRateLimitSlot(): Promise<void> {
+  // Serialize all Birdeye calls in-process so starts are spaced by at least the interval.
+  let release: (() => void) | null = null;
+  const previous = birdeyeQueue.catch(() => undefined);
+  birdeyeQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previous;
+
+  const now = Date.now();
+  const waitMs = Math.max(0, nextBirdeyeRequestAt - now);
+  if (waitMs > 0) {
+    await sleep(waitMs);
+  }
+
+  nextBirdeyeRequestAt = Date.now() + Math.max(0, BIRDEYE_MIN_INTERVAL_MS);
+  release?.();
+}
+
 export class BirdeyeError extends Error {
   constructor(
     public endpoint: string,
@@ -21,6 +50,8 @@ export async function birdeyeGet<T>(
   endpoint: string,
   params?: Record<string, string>
 ): Promise<T> {
+  await waitForBirdeyeRateLimitSlot();
+
   const url = new URL(`${config.birdeye.baseUrl}${endpoint}`);
   if (params) {
     Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));

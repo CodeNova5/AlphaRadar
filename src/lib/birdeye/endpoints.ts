@@ -12,6 +12,22 @@ import type {
   BirdeyeTraderRow,
 } from "./types";
 
+type TraderGainersLosersType = "today" | "yesterday" | "1W";
+
+function toTraderGainersLosersType(window: TimeWindow): TraderGainersLosersType {
+  switch (window) {
+    case "24h":
+      return "today";
+    case "7d":
+      return "1W";
+    case "30d":
+      // The endpoint currently supports only today/yesterday/1W.
+      return "1W";
+    default:
+      return "today";
+  }
+}
+
 function extractItems(data: unknown): unknown[] {
   if (Array.isArray(data)) return data;
   const rec = data as Record<string, unknown>;
@@ -185,11 +201,12 @@ export async function getTokenSecurity(
 export async function getTraderGainersLosers(
   window: TimeWindow
 ): Promise<BirdeyeTraderRow[]> {
+  const type = toTraderGainersLosersType(window);
+
   const data = await birdeyeGet<unknown>("/trader/gainers-losers", {
-    time_window: window,
-    sort_by: "pnl",
+    type,
+    sort_by: "PnL",
     sort_type: "desc",
-    limit: "100",
   });
   return extractItems(data).map((d: unknown) => {
     const r = d as Record<string, unknown>;
