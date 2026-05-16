@@ -70,36 +70,48 @@ export async function buildWalletProfile(
 ): Promise<{ profile: WalletProfile; warnings: string[] }> {
   const warnings: string[] = [];
 
-  let pnlSummary, pnlDetails, netWorth, holdings, firstFunded;
+  const [
+    pnlSummaryResult,
+    pnlDetailsResult,
+    netWorthResult,
+    holdingsResult,
+    firstFundedResult,
+  ] = await Promise.allSettled([
+    getWalletPnlSummary(wallet, window),
+    getWalletPnlDetails(wallet, window),
+    getWalletNetWorth(wallet, window),
+    getWalletTokenList(wallet),
+    getWalletFirstFunded(wallet),
+  ]);
 
-  try {
-    pnlSummary = await getWalletPnlSummary(wallet, window);
-  } catch (e) {
-    warnings.push(`PNL summary unavailable: ${(e as Error).message}`);
+  const pnlSummary =
+    pnlSummaryResult.status === "fulfilled" ? pnlSummaryResult.value : undefined;
+  if (pnlSummaryResult.status === "rejected") {
+    warnings.push(`PNL summary unavailable: ${(pnlSummaryResult.reason as Error).message}`);
   }
 
-  try {
-    pnlDetails = await getWalletPnlDetails(wallet, window);
-  } catch (e) {
-    warnings.push(`PNL details unavailable: ${(e as Error).message}`);
+  const pnlDetails =
+    pnlDetailsResult.status === "fulfilled" ? pnlDetailsResult.value : undefined;
+  if (pnlDetailsResult.status === "rejected") {
+    warnings.push(`PNL details unavailable: ${(pnlDetailsResult.reason as Error).message}`);
   }
 
-  try {
-    netWorth = await getWalletNetWorth(wallet, window);
-  } catch (e) {
-    warnings.push(`Net worth history unavailable: ${(e as Error).message}`);
+  const netWorth =
+    netWorthResult.status === "fulfilled" ? netWorthResult.value : undefined;
+  if (netWorthResult.status === "rejected") {
+    warnings.push(`Net worth history unavailable: ${(netWorthResult.reason as Error).message}`);
   }
 
-  try {
-    holdings = await getWalletTokenList(wallet);
-  } catch (e) {
-    warnings.push(`Current holdings unavailable: ${(e as Error).message}`);
+  const holdings =
+    holdingsResult.status === "fulfilled" ? holdingsResult.value : undefined;
+  if (holdingsResult.status === "rejected") {
+    warnings.push(`Current holdings unavailable: ${(holdingsResult.reason as Error).message}`);
   }
 
-  try {
-    firstFunded = await getWalletFirstFunded(wallet);
-  } catch (e) {
-    warnings.push(`First-funded data unavailable: ${(e as Error).message}`);
+  const firstFunded =
+    firstFundedResult.status === "fulfilled" ? firstFundedResult.value : undefined;
+  if (firstFundedResult.status === "rejected") {
+    warnings.push(`First-funded data unavailable: ${(firstFundedResult.reason as Error).message}`);
   }
 
   // Enrich token metadata for PNL details
